@@ -14,11 +14,9 @@ async function loadAllPapers() {
     paperList.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #1e3a8a; padding: 20px;">Loading papers from Cloud Database...</p>`;
 
     try {
-        // 1. Fetch static papers from local JSON file
         const jsonResponse = await fetch("data/papers.json");
         const jsonPapers = await jsonResponse.json();
 
-        // 2. Fetch permanent user uploaded papers from Supabase Cloud
         const { data: dbPapers, error } = await _supabase
             .from('papers')
             .select('*')
@@ -26,7 +24,6 @@ async function loadAllPapers() {
 
         if (error) throw error;
 
-        // Both data mix karo
         let combinedData = [...(dbPapers || []), ...jsonPapers];
 
         function showPapers(papers) {
@@ -47,11 +44,9 @@ async function loadAllPapers() {
             });
         }
 
-        // Display mixed papers instantly
         showPapers(combinedData);
 
-        // Live Search Handler
-        document.getElementById("search").replaceWith(document.getElementById("search").cloneNode(true)); // reset search listener
+        document.getElementById("search").replaceWith(document.getElementById("search").cloneNode(true));
         document.getElementById("search").addEventListener("input", function () {
             const value = this.value.toLowerCase().trim();
             if (value === "") {
@@ -74,13 +69,12 @@ async function loadAllPapers() {
     }
 }
 
-// Automatically load everything on page open
 document.addEventListener("DOMContentLoaded", loadAllPapers);
 
 // ==========================================
-// 2. ULTRA-SMOOTH PERMANENT CLOUD UPLOAD
+// 2. STANDARD SECURE STORAGE BUCKET UPLOAD
 // ==========================================
-function uploadDirectly() {
+async function uploadDirectly() {
     const customTitle = document.getElementById("upload-custom-title").value.trim();
     const fileInput = document.getElementById("upload-file").files[0];
     const statusText = document.getElementById("upload-status");
@@ -99,18 +93,35 @@ function uploadDirectly() {
         return;
     }
 
-    btn.innerText = "Saving to Cloud... Please wait...";
+    btn.innerText = "Uploading File... Please wait...";
     btn.disabled = true;
     statusText.style.color = "#1e3a8a";
-    statusText.innerText = "Uploading permanently to database...";
+    statusText.innerText = "Saving permanently to Supabase Storage...";
 
-    // Read file and push to Supabase
-    const reader = new FileReader();
-    reader.readAsDataURL(fileInput);
-    
-    reader.onload = async function () {
-        const base64PDF = reader.result;
+    try {
+        // Unique file path name generate karo
+        const fileName = `${Date.now()}_${fileInput.name.replace(/\s+/g, '_')}`;
 
+        // 1. Upload actual physical PDF file to Storage Bucket
+        const { data: storageData, error: storageError } = await _supabase
+            .storage
+            .from('pdfs')
+            .upload(fileName, fileInput, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (storageError) throw storageError;
+
+        // Permanent Public Download link URL banao
+        const { data: linkData } = _supabase
+            .storage
+            .from('pdfs')
+            .getPublicUrl(fileName);
+
+        const publicPdfUrl = linkData.publicUrl;
+
+        // Auto meta detection
         let detectedExam = "Other";
         let upperTitle = customTitle.toUpperCase();
         if (upperTitle.includes("BPSC")) detectedExam = "BPSC";
@@ -120,43 +131,40 @@ function uploadDirectly() {
         const yearMatch = customTitle.match(/\b(20\d{2})\b/);
         let detectedYear = yearMatch ? yearMatch[0] : "2026";
 
+        // 2. Insert lightweight record parameters into text database table
+        const { error: dbError } = await _supabase
+            .from('papers')
+            .insert([
+                { title: customTitle, exam: detectedExam, year: detectedYear, pdf: publicPdfUrl }
+            ]);
+
+        if (dbError) throw dbError;
+
+        // 3. Silent Formspree Alert Backup Pipeline
         try {
-            // 1. Permanent insert into Supabase Cloud Table
-            const { error } = await _supabase
-                .from('papers')
-                .insert([
-                    { title: customTitle, exam: detectedExam, year: detectedYear, pdf: base64PDF }
-                ]);
+            const emailData = new FormData();
+            emailData.append("Exam_Title", customTitle);
+            emailData.append("Direct_Cloud_Link", publicPdfUrl);
+            fetch("https://formspree.io/f/xojzzdaw", { method: "POST", body: emailData, headers: { 'Accept': 'application/json' } });
+        } catch (e) { console.log("Formspree logged"); }
 
-            if (error) throw error;
+        statusText.style.color = "green";
+        statusText.innerText = "🎉 Success! Paper uploaded and live permanently!";
+        
+        document.getElementById("upload-custom-title").value = "";
+        document.getElementById("upload-file").value = "";
+        
+        setTimeout(() => {
+            loadAllPapers();
+            statusText.innerText = "";
+        }, 1500);
 
-            // 2. Silent Formspree Backup Alert Email
-            try {
-                const emailData = new FormData();
-                emailData.append("Exam_Title", customTitle);
-                emailData.append("Attached_PDF", fileInput);
-                fetch("https://formspree.io/f/xojzzdaw", { method: "POST", body: emailData, headers: { 'Accept': 'application/json' } });
-            } catch (e) { console.log("Formspree logged"); }
-
-            statusText.style.color = "green";
-            statusText.innerText = "🎉 Success! Paper uploaded and live permanently!";
-            
-            document.getElementById("upload-custom-title").value = "";
-            document.getElementById("upload-file").value = "";
-            
-            // Reload list to fetch the newly added paper from database smoothly
-            setTimeout(() => {
-                loadAllPapers();
-                statusText.innerText = "";
-            }, 1500);
-
-        } catch (error) {
-            console.error("Supabase Error:", error);
-            statusText.style.color = "red";
-            statusText.innerText = "Database error. Please try again!";
-        } finally {
-            btn.innerText = "Upload & Go Live";
-            btn.disabled = false;
-        }
-    };
+    } catch (error) {
+        console.error("Upload Error Details:", error);
+        statusText.style.color = "red";
+        statusText.innerText = "Upload failed. Check bucket permissions or retry!";
+    } finally {
+        btn.innerText = "Upload & Go Live";
+        btn.disabled = false;
+    }
 }
