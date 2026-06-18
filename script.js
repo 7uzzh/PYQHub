@@ -1,7 +1,7 @@
 // ==========================================
 // 0. GOOGLE SHEETS PIPELINE CONFIGURATION
 // ==========================================
-const GOOGLE_SCRIPT_URL = "YAHAN_APNA_WEB_APP_URL_PASTE_KARO";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxuh6YNDA1mup5mGEo16TNJyxS3bAci1XAmXfCe5y-VaJqLghR7_yDmoVUgl4RGDv3/exec";
 
 // ==========================================
 // 1. DATA FETCH & LIVE GOOGLE SHEET RENDER
