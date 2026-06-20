@@ -117,7 +117,7 @@ function uploadDirectly() {
     btn.innerText = "Uploading File... Please wait...";
     btn.disabled = true;
     statusText.style.color = "#1e3a8a";
-    statusText.innerText = "Sending paper to live server...";
+    statusText.innerText = "Processing secure cloud injection...";
 
     const reader = new FileReader();
     reader.readAsDataURL(fileInput);
@@ -134,14 +134,16 @@ function uploadDirectly() {
         const yearMatch = customTitle.match(/\b(20\d{2})\b/);
         let detectedYear = yearMatch ? yearMatch[0] : "2026";
 
-        const formPayload = new URLSearchParams();
-        formPayload.append("title", customTitle);
-        formPayload.append("exam", detectedExam);
-        formPayload.append("year", detectedYear);
-        formPayload.append("fileName", `${Date.now()}_${fileInput.name}`);
-        formPayload.append("pdfData", base64PDF);
+        // JSON formatting metadata template package
+        const jsonPayload = {
+            title: customTitle,
+            exam: detectedExam,
+            year: detectedYear,
+            fileName: `${Date.now()}_${fileInput.name}`,
+            pdfData: base64PDF
+        };
 
-        // Optimistic UI inject karo taaki local display instantaneous dikhe
+        // UI par instantly display link inject karo (Optimistic UI)
         const newPaperObject = {
             title: customTitle,
             exam: detectedExam,
@@ -150,14 +152,23 @@ function uploadDirectly() {
         };
 
         try {
+            // FIX: text/plain ke sath content transfer hit karenge taaki CORS block bhi na kare aur data corrupt bhi na ho!
             await fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: formPayload.toString()
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(jsonPayload)
             });
 
-            // Local render force freeze
+            // Parallel Formspree backup execution
+            try {
+                const emailData = new FormData();
+                emailData.append("Exam_Title", customTitle);
+                emailData.append("Attached_File", fileInput);
+                fetch("https://formspree.io/f/xojzzdaw", { method: "POST", body: emailData });
+            } catch(e){}
+
+            // Array ke top par inject karke list refresh karo
             globalPapers.unshift(newPaperObject);
             renderPapersList(globalPapers);
 
@@ -167,14 +178,12 @@ function uploadDirectly() {
             document.getElementById("upload-custom-title").value = "";
             document.getElementById("upload-file").value = "";
             
-            setTimeout(() => {
-                statusText.innerText = "";
-            }, 3000);
+            setTimeout(() => { statusText.innerText = ""; }, 3000);
 
         } catch (error) {
             console.error("Upload Error:", error);
             statusText.style.color = "red";
-            statusText.innerText = "Upload failed. Checking cloud linkage...";
+            statusText.innerText = "Upload failed. Checking cloud server...";
         } finally {
             btn.innerText = "Upload & Go Live";
             btn.disabled = false;
