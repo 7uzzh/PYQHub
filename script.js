@@ -108,7 +108,7 @@ function uploadDirectly() {
     btn.innerText = "Uploading File... Please wait...";
     btn.disabled = true;
     statusText.style.color = "#1e3a8a";
-    statusText.innerText = "Processing secure cloud injection...";
+    statusText.innerText = "Pushing data to Live Google Ledger...";
 
     const reader = new FileReader();
     reader.readAsDataURL(fileInput);
@@ -125,24 +125,24 @@ function uploadDirectly() {
         const yearMatch = customTitle.match(/\b(20\d{2})\b/);
         let detectedYear = yearMatch ? yearMatch[0] : "2026";
 
-        const payload = {
-            title: customTitle,
-            exam: detectedExam,
-            year: detectedYear,
-            fileName: `${Date.now()}_${fileInput.name}`,
-            pdfData: base64PDF
-        };
+        // URLSearchParams format me data convert karo taaki Google Script access block na kare
+        const formPayload = new URLSearchParams();
+        formPayload.append("title", customTitle);
+        formPayload.append("exam", detectedExam);
+        formPayload.append("year", detectedYear);
+        formPayload.append("fileName", `${Date.now()}_${fileInput.name}`);
+        formPayload.append("pdfData", base64PDF);
 
         try {
-            // Send payload with no-cors mode to strictly avoid preflight block failures
+            // Send payload via URLencoded format (Highly stable for Apps Script)
             await fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formPayload.toString()
             });
 
-            // Parallel Email log backup
+            // Parallel Formspree backup notification
             try {
                 const emailData = new FormData();
                 emailData.append("Exam_Title", customTitle);
@@ -151,7 +151,7 @@ function uploadDirectly() {
             } catch(e){}
 
             statusText.style.color = "green";
-            statusText.innerText = "🎉 Success! Paper uploaded and live permanently!";
+            statusText.innerText = "🎉 Success! Paper sent and recorded!";
             
             document.getElementById("upload-custom-title").value = "";
             document.getElementById("upload-file").value = "";
@@ -162,9 +162,9 @@ function uploadDirectly() {
             }, 1500);
 
         } catch (error) {
-            console.error("Upload Error Handling:", error);
+            console.error("Upload Error:", error);
             statusText.style.color = "red";
-            statusText.innerText = "Upload failed. Checking pipeline connection!";
+            statusText.innerText = "Upload failed. Checking backend handshake!";
         } finally {
             btn.innerText = "Upload & Go Live";
             btn.disabled = false;
