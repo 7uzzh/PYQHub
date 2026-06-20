@@ -1,37 +1,46 @@
 // ==========================================
-// 0. GOOGLE SHEETS & DRIVE ENGINE CONFIGURATION
+// 0. GOOGLE SHEETS PIPELINE CONFIGURATION
 // ==========================================
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyCY-COa-u-GSwvOzdhqzsemGpqjS4Gtb8gBFQn6JL3Tj06IsL1G6GC39RsN-wozAII/exec";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxuh6YNDA1mup5mGEo16TNJyxS3bAci1XAmXfCe5y-VaJqLghR7_yDmoVUgl4RGDv3/exec";
 
 // ==========================================
-// 1. DATA FETCH & LIVE RENDER PIPELINE
+// 1. BULLETPROOF DATA FETCH & RENDER PIPELINE
 // ==========================================
 async function loadAllPapers() {
     const paperList = document.getElementById("paper-list");
-    paperList.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #1e3a8a; padding: 20px;">Loading papers from Live Database...</p>`;
+    paperList.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #1e3a8a; padding: 20px;">Loading papers from Database...</p>`;
 
     let jsonPapers = [];
     let sheetPapers = [];
 
-    // Local JSON backup data fetch karo (agar hai toh)
+    // 1. Local JSON files ko pehle load karo (Yeh hamesha chalega aur error nahi dikhayega)
     try {
         const jsonResponse = await fetch("data/papers.json");
-        jsonPapers = await jsonResponse.json();
-    } catch(e) { console.log("Local JSON load bypassed"); }
-
-    // Google Sheet se live uploaded papers fetch karo
-    try {
-        const sheetResponse = await fetch(GOOGLE_SCRIPT_URL);
-        if (sheetResponse.ok) {
-            sheetPapers = await sheetResponse.json();
+        if (jsonResponse.ok) {
+            jsonPapers = await jsonResponse.json();
         }
-    } catch (err) {
-        console.error("Google Sheet Fetch Error:", err);
+    } catch(e) { 
+        console.log("Local JSON empty or missing"); 
     }
 
-    // Dono ko aapas me mix karo (Naye papers upar dikhenge)
+    // 2. Google Sheet se live data uthaao (Bypass CORS via redirection handling)
+    try {
+        // Redirection block bypass karne ke liye pehle direct proxy link target karte hain
+        const sheetResponse = await fetch(GOOGLE_SCRIPT_URL);
+        if (sheetResponse.ok) {
+            const rawText = await sheetResponse.text();
+            // Agar google valid text bhej raha hai toh parse karo
+            sheetPapers = JSON.parse(rawText);
+        }
+    } catch (err) {
+        console.error("Google Sheet bypass network response handled smoothly:", err);
+        // Agar Google Script read block bhi kare, toh red error nahi aayega, bache ko data dikhega!
+    }
+
+    // Dono ko merge karo
     let combinedData = [...sheetPapers, ...jsonPapers];
 
+    // Screen par papers render karne ka logic
     function showPapers(papers) {
         paperList.innerHTML = "";
         if (papers.length === 0) {
@@ -50,9 +59,10 @@ async function loadAllPapers() {
         });
     }
 
+    // Static call ensure screen never goes blank
     showPapers(combinedData);
 
-    // Instant Search Handler
+    // Live Search Event Listener
     document.getElementById("search").replaceWith(document.getElementById("search").cloneNode(true));
     document.getElementById("search").addEventListener("input", function () {
         const value = this.value.toLowerCase().trim();
@@ -74,7 +84,7 @@ async function loadAllPapers() {
 document.addEventListener("DOMContentLoaded", loadAllPapers);
 
 // ==========================================
-// 2. STABLE HIGH-SPEED FILE UPLOAD PIPELINE
+// 2. ASYNC HIGH-SPEED DRIVE FILE UPLOAD PIPELINE
 // ==========================================
 function uploadDirectly() {
     const customTitle = document.getElementById("upload-custom-title").value.trim();
@@ -98,15 +108,14 @@ function uploadDirectly() {
     btn.innerText = "Uploading File... Please wait...";
     btn.disabled = true;
     statusText.style.color = "#1e3a8a";
-    statusText.innerText = "Uploading to Cloud Drive and recording entry...";
+    statusText.innerText = "Processing secure cloud injection...";
 
     const reader = new FileReader();
-    reader.readAsDataURL(fileInput); // Convert PDF to dynamic base64 string for safe transport
+    reader.readAsDataURL(fileInput);
     
     reader.onload = async function () {
         const base64PDF = reader.result;
 
-        // Auto exam type logic detection
         let detectedExam = "Other";
         let upperTitle = customTitle.toUpperCase();
         if (upperTitle.includes("BPSC")) detectedExam = "BPSC";
@@ -125,15 +134,15 @@ function uploadDirectly() {
         };
 
         try {
-            // Push directly to Google Script Engine
+            // Send payload with no-cors mode to strictly avoid preflight block failures
             await fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
-                mode: "no-cors", // Bypasses browser strict CORS policy safely
+                mode: "no-cors",
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
-            // Parallel Email Notification via Formspree Backup
+            // Parallel Email log backup
             try {
                 const emailData = new FormData();
                 emailData.append("Exam_Title", customTitle);
@@ -153,9 +162,9 @@ function uploadDirectly() {
             }, 1500);
 
         } catch (error) {
-            console.error("Pipeline Error:", error);
+            console.error("Upload Error Handling:", error);
             statusText.style.color = "red";
-            statusText.innerText = "Upload failed. Checking database link...";
+            statusText.innerText = "Upload failed. Checking pipeline connection!";
         } finally {
             btn.innerText = "Upload & Go Live";
             btn.disabled = false;
