@@ -3,14 +3,13 @@
 // ==========================================
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxuh6YNDA1mup5mGEo16TNJyxS3bAci1XAmXfCe5y-VaJqLghR7_yDmoVUgl4RGDv3/exec";
 
-// Apni Google Sheet ka ID yahan sahi se dalo (Bina kisi lafde ke direct data read hoga)
-const SHEET_ID = "1NFJ4J9OudikBZLxd01GAnfNmrufXVaqvZMw89PvnUp8";
-const GOOGLE_SHEET_JSON_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+// Apni Google Sheet ka ID yahan dalo
+const SHEET_ID = "YAHAN_APNI_SHEET_KA_ID_DALO";
 
 let globalPapers = [];
 
 // ==========================================
-// 1. BULLETPROOF LIVE SHEET DATA FETCH
+// 1. FRESH LIVE FETCH PIPELINE (CACHE BYPASS)
 // ==========================================
 async function loadAllPapers() {
     const paperList = document.getElementById("paper-list");
@@ -19,18 +18,20 @@ async function loadAllPapers() {
     let jsonPapers = [];
     let sheetPapers = [];
 
-    // 1. Local JSON load karo
+    // 1. Local JSON load backup
     try {
         const jsonResponse = await fetch("data/papers.json");
         if (jsonResponse.ok) { jsonPapers = await jsonResponse.json(); }
     } catch(e) { console.log("Local JSON load bypassed"); }
 
-    // 2. Google Sheet se direct bina CORS ke data read karo
+    // 2. Google Sheet se bina kisi cache memory block ke direct data read karo
     try {
+        // Dynamic cache-buster parameter (?t=currentTime) lagaya taaki Google fresh data de
+        const GOOGLE_SHEET_JSON_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&t=${Date.now()}`;
+        
         const response = await fetch(GOOGLE_SHEET_JSON_URL);
         const text = await response.text();
         
-        // Google sheets ka raw text clean karke JSON banana
         const jsonString = text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1);
         const json = JSON.parse(jsonString);
         
@@ -40,13 +41,13 @@ async function loadAllPapers() {
             exam: row.c[1] ? row.c[1].v : "",
             year: row.c[2] ? row.c[2].v : "",
             pdf: row.c[3] ? row.c[3].v : ""
-        })).filter(p => p.title !== ""); // Blank rows filter out karne ke liye
+        })).filter(p => p.title !== "");
         
     } catch (err) {
         console.error("Direct Sheet Read Error:", err);
     }
 
-    // Naye paper humesha upar dikhane ke liye reverse kiya
+    // Naye uploads humesha top par chamkenge
     globalPapers = [...sheetPapers.reverse(), ...jsonPapers];
     renderPapersList(globalPapers);
 
@@ -91,6 +92,8 @@ function renderPapersList(papers) {
 
 document.addEventListener("DOMContentLoaded", loadAllPapers);
 
+// ==========================================
+// 2. STABLE HIGH-SPEED FILE UPLOAD PIPELINE
 // ==========================================
 function uploadDirectly() {
     const customTitle = document.getElementById("upload-custom-title").value.trim();
@@ -138,8 +141,7 @@ function uploadDirectly() {
         formPayload.append("fileName", `${Date.now()}_${fileInput.name}`);
         formPayload.append("pdfData", base64PDF);
 
-        // 1. INSTANT DYNAMIC INJECTION (Optimistic UI)
-        // Bache ko instantly screen par paper dikhao bina kisi network delay ke
+        // Optimistic UI inject karo taaki local display instantaneous dikhe
         const newPaperObject = {
             title: customTitle,
             exam: detectedExam,
@@ -148,7 +150,6 @@ function uploadDirectly() {
         };
 
         try {
-            // Background push triggers here
             await fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",
                 mode: "no-cors",
@@ -156,15 +157,7 @@ function uploadDirectly() {
                 body: formPayload.toString()
             });
 
-            // Parallel Formspree copy execution
-            try {
-                const emailData = new FormData();
-                emailData.append("Exam_Title", customTitle);
-                emailData.append("Attached_File", fileInput);
-                fetch("https://formspree.io/f/xojzzdaw", { method: "POST", body: emailData });
-            } catch(e){}
-
-            // SUCCESS FLOW: Array me sabse upar inject karo aur screen par freeze kar do
+            // Local render force freeze
             globalPapers.unshift(newPaperObject);
             renderPapersList(globalPapers);
 
@@ -174,11 +167,9 @@ function uploadDirectly() {
             document.getElementById("upload-custom-title").value = "";
             document.getElementById("upload-file").value = "";
             
-            // FIX: Refresh delay ko badha diya taaki Google Sheet back-end sync complete kar sake 
-            // Tab tak bache ko naya paper wahin freeze dikhega, bhaagega nahi!
             setTimeout(() => {
                 statusText.innerText = "";
-            }, 4000);
+            }, 3000);
 
         } catch (error) {
             console.error("Upload Error:", error);
