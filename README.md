@@ -1,1 +1,1 @@
-# PYQHub
+# PYQ

@@ -188,6 +188,6 @@ app.post('/api/delete', (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`==================================================`);
-    console.log(`🚀 PYQHub Server is running on: http://localhost:${PORT}`);
+    console.log(`🚀 PYQ Server is running on: http://localhost:${PORT}`);
     console.log(`==================================================`);
 });

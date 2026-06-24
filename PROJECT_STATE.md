@@ -1,4 +1,4 @@
-# PYQHub
+# PYQ
 
 Status: Complete - Uploads & Redesigned UI Working
 
@@ -8,7 +8,7 @@ index.html, style.css, script.js, server.js, package.json, data/papers.json
 Goal: Build India's largest Previous Year Question Paper website.
 Last Update: Added local Express backend for upload streams, completed dark-mode UI redesign, and populated About, Contact, and Privacy pages.
 Resume Command:
-Continue PYQHub from PROJECT_STATE.md
+Continue PYQ from PROJECT_STATE.md
 Folder Structure:
 pages/, papers/, uploads/, images/, assets/, data/
 Current Features:
