@@ -36,6 +36,20 @@ if (!fs.existsSync(papersJsonPath)) {
     fs.writeFileSync(papersJsonPath, JSON.stringify([], null, 2), 'utf-8');
 }
 
+// Get Papers API Endpoint
+app.get('/api/papers', (req, res) => {
+    try {
+        if (fs.existsSync(papersJsonPath)) {
+            const data = fs.readFileSync(papersJsonPath, 'utf-8');
+            return res.json(JSON.parse(data));
+        }
+        res.json([]);
+    } catch (error) {
+        console.error('Error fetching papers:', error);
+        res.status(500).json({ success: false, message: 'Internal server error.' });
+    }
+});
+
 // Upload API Endpoint
 app.post('/api/upload', (req, res) => {
     try {

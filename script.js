@@ -1,10 +1,15 @@
 // ==========================================
-// 0. GOOGLE SHEETS PIPELINE CONFIGURATION
+// 0. BACKEND & GOOGLE SHEETS CONFIGURATION
 // ==========================================
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxxuh6YNDA1mup5mGEo16TNJyxS3bAci1XAmXfCe5y-VaJqLghR7_yDmoVUgl4RGDv3/exec";
-
-// Apni Google Sheet ka ID yahan dalo
 const SHEET_ID = "YAHAN_APNI_SHEET_KA_ID_DALO";
+
+// Render Backend configuration. Replace this link with your live Render URL once deployed.
+const RENDER_BACKEND_URL = "https://pyq-backend.onrender.com";
+
+const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+    ? '' 
+    : RENDER_BACKEND_URL;
 
 let globalPapers = [];
 
@@ -20,12 +25,15 @@ async function loadAllPapers() {
 
     // 1. Fetch from database with cache-buster
     try {
-        const jsonResponse = await fetch(`data/papers.json?t=${Date.now()}`);
+        const fetchUrl = BACKEND_URL 
+            ? `${BACKEND_URL}/api/papers?t=${Date.now()}` 
+            : `data/papers.json?t=${Date.now()}`;
+        const jsonResponse = await fetch(fetchUrl);
         if (jsonResponse.ok) { 
             jsonPapers = await jsonResponse.json(); 
         }
     } catch(e) { 
-        console.log("Local JSON load failed:", e); 
+        console.log("Database fetch failed:", e); 
     }
 
     // 2. Fetch from Google Sheet (only if configured and NOT placeholder)
@@ -162,6 +170,12 @@ function renderPapersList(papers) {
         }
         const dateSpan = dateText ? `<span style="font-size: 11px; color: var(--text-secondary); margin-left: auto;">${dateText}</span>` : '';
 
+        // Resolve absolute PDF link if using backend
+        let pdfLink = paper.pdf;
+        if (BACKEND_URL && !pdfLink.startsWith('http://') && !pdfLink.startsWith('https://')) {
+            pdfLink = `${BACKEND_URL}/${pdfLink}`;
+        }
+
         paperList.innerHTML += `
           <div class="glass-card paper-item-card">
             <h3>${paper.title}${badgeHTML}</h3>
@@ -170,7 +184,7 @@ function renderPapersList(papers) {
               <span class="badge year-badge">${paper.year}</span>
               ${dateSpan}
             </div>
-            <a class="download-btn" href="${paper.pdf}" target="_blank">
+            <a class="download-btn" href="${pdfLink}" target="_blank">
               <span>Download PDF</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             </a>
@@ -235,7 +249,7 @@ function uploadDirectly() {
 
 
         try {
-            const response = await fetch('/api/upload', {
+            const response = await fetch(`${BACKEND_URL}/api/upload`, {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(jsonPayload)
