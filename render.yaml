@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pyq-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    disk:
+      name: storage-disk
+      mountPath: /home/render/project/src/storage
+      sizeGB: 1

@@ -16,24 +16,34 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Serve static files from the root directory
+// Serve static files from the root directory and the storage folder
 app.use(express.static(path.join(__dirname)));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/data', express.static(path.join(__dirname, 'data')));
+app.use('/storage', express.static(path.join(__dirname, 'storage')));
 
-// Ensure uploads and data directories exist
-const uploadsDir = path.join(__dirname, 'uploads');
-const dataDir = path.join(__dirname, 'data');
+// Ensure unified storage directory and subfolders exist
+const storageDir = path.join(__dirname, 'storage');
+const uploadsDir = path.join(storageDir, 'uploads');
+const dataDir = path.join(storageDir, 'data');
 const papersJsonPath = path.join(dataDir, 'papers.json');
 
+if (!fs.existsSync(storageDir)) {
+    fs.mkdirSync(storageDir, { recursive: true });
+}
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
 }
+
+// Migrate existing local papers list if it is not present in storage yet
 if (!fs.existsSync(papersJsonPath)) {
-    fs.writeFileSync(papersJsonPath, JSON.stringify([], null, 2), 'utf-8');
+    const defaultPapersPath = path.join(__dirname, 'data', 'papers.json');
+    if (fs.existsSync(defaultPapersPath)) {
+        fs.copyFileSync(defaultPapersPath, papersJsonPath);
+    } else {
+        fs.writeFileSync(papersJsonPath, JSON.stringify([], null, 2), 'utf-8');
+    }
 }
 
 // Get Papers API Endpoint
@@ -100,7 +110,7 @@ app.post('/api/upload', (req, res) => {
             exam: exam,
             year: year,
             keywords: keywords,
-            pdf: `uploads/${safeFileName}`,
+            pdf: `storage/uploads/${safeFileName}`,
             uploadedAt: new Date().toISOString()
         };
 
