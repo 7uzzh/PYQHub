@@ -8,9 +8,8 @@ const SHEET_ID = "YAHAN_APNI_SHEET_KA_ID_DALO";
 // Render Backend configuration (Fallback / Alternative backend)
 const RENDER_BACKEND_URL = "https://pyq-backend.onrender.com";
 
-const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? '' 
-    : RENDER_BACKEND_URL;
+const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const BACKEND_URL = IS_LOCAL ? '' : RENDER_BACKEND_URL;
 
 let globalPapers = [];
 
@@ -244,7 +243,12 @@ async function uploadDirectly() {
         return;
     }
 
-    if (fileInput.type !== "application/pdf" && !fileInput.name.endsWith(".pdf")) {
+    // Check file type — note: some browsers/OS return empty string for File.type on PDFs,
+    // so we accept empty type as long as the filename ends with .pdf
+    const isPdf = fileInput.name.toLowerCase().endsWith('.pdf') ||
+                  fileInput.type === 'application/pdf' ||
+                  fileInput.type === '';
+    if (!isPdf) {
         statusText.style.color = "red";
         statusText.innerText = "❌ Only .pdf files are allowed.";
         const fileEl = document.getElementById("upload-file");
@@ -270,8 +274,10 @@ async function uploadDirectly() {
     btn.disabled = true;
     statusText.style.color = "#1e3a8a";
 
-    const isGoogleScript = GOOGLE_SCRIPT_URL && 
-                           GOOGLE_SCRIPT_URL !== "YAHAN_APNI_GOOGLE_SCRIPT_URL_DALO" && 
+    // Use Google Script only on production; always use local Express server on localhost
+    const isGoogleScript = !IS_LOCAL &&
+                           GOOGLE_SCRIPT_URL &&
+                           GOOGLE_SCRIPT_URL !== "YAHAN_APNI_GOOGLE_SCRIPT_URL_DALO" &&
                            GOOGLE_SCRIPT_URL.startsWith("https://script.google.com");
 
     if (isGoogleScript) {
@@ -372,10 +378,28 @@ async function uploadDirectly() {
             btn.disabled = false;
         }
     } else {
-        // --- FALLBACK: EXPRESS BACKEND SINGLE UPLOAD ---
+        // --- EXPRESS BACKEND UPLOAD (with progress indicator) ---
+        statusText.style.color = "#6366f1";
+        statusText.innerText = "Reading file...";
+
         const reader = new FileReader();
         reader.readAsDataURL(fileInput);
-        
+
+        reader.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 50);
+                statusText.innerText = `Reading file... ${pct}%`;
+                btn.innerText = `Uploading (${pct}%)`;
+            }
+        };
+
+        reader.onerror = () => {
+            statusText.style.color = "red";
+            statusText.innerText = "❌ Could not read the file. Please try again.";
+            btn.innerText = "Upload & Go Live";
+            btn.disabled = false;
+        };
+
         reader.onload = async function () {
             const base64PDF = reader.result;
 
@@ -388,20 +412,28 @@ async function uploadDirectly() {
             };
 
             try {
-                const uploadUrl = `${BACKEND_URL}/api/upload`;
-                const options = {
+                statusText.innerText = "Uploading to server (50%)...";
+                btn.innerText = "Uploading (50%)";
+
+                const uploadUrl = BACKEND_URL ? `${BACKEND_URL}/api/upload` : `/api/upload`;
+                const response = await fetch(uploadUrl, {
                     method: "POST",
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(jsonPayload)
-                };
+                });
 
-                const response = await fetch(uploadUrl, options);
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                    throw new Error(result.message || result.error || "Upload failed");
+                let result;
+                try {
+                    result = await response.json();
+                } catch (parseErr) {
+                    throw new Error(`Server returned non-JSON response (status ${response.status}). Is the server running?`);
                 }
 
-                // Send backup formspree notification
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || result.error || `Upload failed (HTTP ${response.status})`);
+                }
+
+                // Send backup formspree notification (fire-and-forget)
                 try {
                     const emailData = new FormData();
                     emailData.append("Exam_Title", customTitle);
@@ -412,17 +444,21 @@ async function uploadDirectly() {
                 globalPapers.unshift(result.paper);
                 renderPapersList(globalPapers);
 
-                statusText.style.color = "green";
+                statusText.style.color = "#10b981";
                 statusText.innerText = "🎉 Success! Paper uploaded and live permanently!";
-                
+
                 resetUploadForm();
-                
-                setTimeout(() => { statusText.innerText = ""; }, 3000);
+
+                setTimeout(() => { statusText.innerText = ""; }, 4000);
 
             } catch (error) {
                 console.error("Upload Error:", error);
                 statusText.style.color = "red";
-                statusText.innerText = "❌ Upload failed. Make sure backend server is running.";
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    statusText.innerText = "❌ Cannot reach server. Make sure the backend is running (npm start).";
+                } else {
+                    statusText.innerText = `❌ Upload failed: ${error.message}`;
+                }
             } finally {
                 btn.innerText = "Upload & Go Live";
                 btn.disabled = false;
@@ -487,5 +523,97 @@ document.addEventListener("DOMContentLoaded", () => {
                 dropText.innerHTML = `Drag & drop your PDF here, or <span>browse</span>`;
             }
         });
+    }
+});
+
+// TEST HOOK FOR AUTOMATED SEQUENTIAL UPLOAD TESTING
+document.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("test") === "true") {
+        console.log("=== STARTING AUTOMATED SEQUENTIAL UPLOAD TEST ===");
+        
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+        
+        async function runAutoTest() {
+            try {
+                // 1. Expand accordion
+                const toggleBtn = document.getElementById("toggle-upload-btn");
+                const uploadContent = document.getElementById("upload-content");
+                if (toggleBtn && uploadContent && !uploadContent.classList.contains("open")) {
+                    toggleBtn.click();
+                }
+                await delay(500);
+
+                // 2. Select file 1
+                console.log("Selecting file 1...");
+                const file1 = new File(["mock content 1"], "test1.pdf", { type: "application/pdf" });
+                const dt1 = new DataTransfer();
+                dt1.items.add(file1);
+                const fileInput = document.getElementById("upload-file");
+                fileInput.files = dt1.files;
+                fileInput.dispatchEvent(new Event("change"));
+                
+                document.getElementById("upload-custom-title").value = "Auto UPSC Test 1";
+                await delay(500);
+
+                // 3. Click upload
+                console.log("Uploading file 1...");
+                const uploadBtn = document.getElementById("upload-btn");
+                uploadBtn.click();
+
+                // 4. Wait for success
+                const statusText = document.getElementById("upload-status");
+                let success = false;
+                for (let i = 0; i < 30; i++) { // wait up to 30 seconds
+                    await delay(1000);
+                    if (statusText.innerText.includes("Success")) {
+                        success = true;
+                        break;
+                    }
+                }
+
+                if (!success) {
+                    throw new Error("File 1 upload timed out or failed: " + statusText.innerText);
+                }
+
+                console.log("File 1 uploaded successfully! Waiting 2 seconds before selecting file 2...");
+                await delay(2000);
+
+                // 5. Select file 2
+                console.log("Selecting file 2...");
+                const file2 = new File(["mock content 2"], "test2.pdf", { type: "application/pdf" });
+                const dt2 = new DataTransfer();
+                dt2.items.add(file2);
+                fileInput.files = dt2.files;
+                fileInput.dispatchEvent(new Event("change"));
+                
+                document.getElementById("upload-custom-title").value = "Auto UPSC Test 2";
+                await delay(500);
+
+                // 6. Click upload
+                console.log("Uploading file 2...");
+                uploadBtn.click();
+
+                // 7. Wait for success
+                success = false;
+                for (let i = 0; i < 30; i++) {
+                    await delay(1000);
+                    if (statusText.innerText.includes("Success")) {
+                        success = true;
+                        break;
+                    }
+                }
+
+                if (!success) {
+                    throw new Error("File 2 upload timed out or failed: " + statusText.innerText);
+                }
+
+                console.log("=== AUTOMATED TEST SUCCESSFUL ===");
+            } catch (err) {
+                console.error("=== AUTOMATED TEST FAILED ===", err);
+            }
+        }
+        
+        runAutoTest();
     }
 });
